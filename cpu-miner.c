@@ -9,6 +9,7 @@
  */
 
 #include "cpuminer-config.h"
+//#define exit(x) (return x)
 #define _GNU_SOURCE
 
 #include <stdio.h>
@@ -19,6 +20,8 @@
 #include <unistd.h>
 #include <sys/time.h>
 #include <time.h>
+
+//#define printf() __android_log_write();
 #ifdef WIN32
 #include <windows.h>
 #else
@@ -33,8 +36,10 @@
 #include <sys/sysctl.h>
 #endif
 #endif
-#include <jansson.h>
-#include <curl/curl.h>
+//#include <jansson.h>
+#include "compat/jansson/jansson.h"
+//#include <include/curl/curl.h>
+#include "curl/include/curl/curl.h"
 #include "compat.h"
 #include "miner.h"
 
@@ -43,6 +48,8 @@
 
 #ifdef __linux /* Linux specific policy and affinity management */
 #include <sched.h>
+#include "cpu-miner.h"
+static logobject *logob;
 static inline void drop_policy(void)
 {
 	struct sched_param param;
@@ -146,6 +153,7 @@ int longpoll_thr_id = -1;
 int stratum_thr_id = -1;
 struct work_restart *work_restart = NULL;
 static struct stratum_ctx stratum;
+//static logobject logob;
 
 pthread_mutex_t applog_lock;
 static pthread_mutex_t stats_lock;
@@ -691,14 +699,14 @@ static void share_result(int result, const char *reason)
 	result ? accepted_count++ : rejected_count++;
 	pthread_mutex_unlock(&stats_lock);
 	
-	sprintf(s, hashrate >= 1e6 ? "%.0f" : "%.2f", 1e-3 * hashrate);
+	////sprintf(s, hashrate >= 1e6 ? "%.0f" : "%.2f", 1e-3 * hashrate);
 	applog(LOG_INFO, "accepted: %lu/%lu (%.2f%%), %s khash/s %s",
 		   accepted_count,
 		   accepted_count + rejected_count,
 		   100. * accepted_count / (accepted_count + rejected_count),
 		   s,
 		   result ? "(yay!!!)" : "(booooo)");
-
+	//write(messagePipe[1],&s,2);
 	if (opt_debug && reason)
 		applog(LOG_DEBUG, "DEBUG: reject reason: %s", reason);
 }
@@ -728,9 +736,9 @@ static bool submit_upstream_work(CURL *curl, struct work *work)
 		bin2hex(noncestr, (const unsigned char *)(&nonce), 4);
 		xnonce2str = abin2hex(work->xnonce2, work->xnonce2_len);
 		req = malloc(256 + strlen(rpc_user) + strlen(work->job_id) + 2 * work->xnonce2_len);
-		sprintf(req,
-			"{\"method\": \"mining.submit\", \"params\": [\"%s\", \"%s\", \"%s\", \"%s\", \"%s\"], \"id\":4}",
-			rpc_user, work->job_id, xnonce2str, ntimestr, noncestr);
+		//sprintf(req,
+		//	"{\"method\": \"mining.submit\", \"params\": [\"%s\", \"%s\", \"%s\", \"%s\", \"%s\"], \"id\":4}",
+		//	rpc_user, work->job_id, xnonce2str, ntimestr, noncestr);
 		free(xnonce2str);
 
 		rc = stratum_send_line(&stratum, req);
@@ -752,15 +760,15 @@ static bool submit_upstream_work(CURL *curl, struct work *work)
 			params = json_dumps(val, 0);
 			json_decref(val);
 			req = malloc(128 + 2*80 + strlen(work->txs) + strlen(params));
-			sprintf(req,
-				"{\"method\": \"submitblock\", \"params\": [\"%s%s\", %s], \"id\":1}\r\n",
-				data_str, work->txs, params);
+			//sprintf(req,
+			//	"{\"method\": \"submitblock\", \"params\": [\"%s%s\", %s], \"id\":1}\r\n",
+			//	data_str, work->txs, params);
 			free(params);
 		} else {
 			req = malloc(128 + 2*80 + strlen(work->txs));
-			sprintf(req,
-				"{\"method\": \"submitblock\", \"params\": [\"%s%s\"], \"id\":1}\r\n",
-				data_str, work->txs);
+			//sprintf(req,
+			//	"{\"method\": \"submitblock\", \"params\": [\"%s%s\"], \"id\":1}\r\n",
+			//	data_str, work->txs);
 		}
 		val = json_rpc_call(curl, rpc_url, rpc_userpass, req, NULL, 0);
 		free(req);
@@ -795,9 +803,9 @@ static bool submit_upstream_work(CURL *curl, struct work *work)
 		bin2hex(data_str, (unsigned char *)work->data, sizeof(work->data));
 
 		/* build JSON-RPC request */
-		sprintf(s,
-			"{\"method\": \"getwork\", \"params\": [ \"%s\" ], \"id\":1}\r\n",
-			data_str);
+		//sprintf(s,
+		//	"{\"method\": \"getwork\", \"params\": [ \"%s\" ], \"id\":1}\r\n",
+		//	data_str);
 
 		/* issue JSON-RPC request */
 		val = json_rpc_call(curl, rpc_url, rpc_userpass, s, NULL, 0);
@@ -1145,6 +1153,8 @@ static void *miner_thread(void *userdata)
 		if (!opt_quiet)
 			applog(LOG_INFO, "Binding thread %d to cpu %d",
 			       thr_id, thr_id % num_processors);
+		//log_print(logob,"Binding thread %d to cpu %d",
+		//		  thr_id, thr_id % num_processors);
 		affine_to_cpu(thr_id, thr_id % num_processors);
 	}
 	
@@ -1251,17 +1261,20 @@ static void *miner_thread(void *userdata)
 			pthread_mutex_unlock(&stats_lock);
 		}
 		if (!opt_quiet) {
-			sprintf(s, thr_hashrates[thr_id] >= 1e6 ? "%.0f" : "%.2f",
-				1e-3 * thr_hashrates[thr_id]);
+			//sprintf(s, thr_hashrates[thr_id] >= 1e6 ? "%.0f" : "%.2f",
+			//	1e-3 * thr_hashrates[thr_id]);
 			applog(LOG_INFO, "thread %d: %lu hashes, %s khash/s",
 				thr_id, hashes_done, s);
+			//log_print(logob, "thread %d: %lu hashes, %s khash/s",
+			//		  thr_id, hashes_done, s);
+
 		}
 		if (opt_benchmark && thr_id == opt_n_threads - 1) {
 			double hashrate = 0.;
 			for (i = 0; i < opt_n_threads && thr_hashrates[i]; i++)
 				hashrate += thr_hashrates[i];
 			if (i == opt_n_threads) {
-				sprintf(s, hashrate >= 1e6 ? "%.0f" : "%.2f", 1e-3 * hashrate);
+				//sprintf(s, hashrate >= 1e6 ? "%.0f" : "%.2f", 1e-3 * hashrate);
 				applog(LOG_INFO, "Total: %s khash/s", s);
 			}
 		}
@@ -1319,7 +1332,7 @@ start:
 		if (!lp_url)
 			goto out;
 
-		sprintf(lp_url, "%s%s%s", rpc_url, need_slash ? "/" : "", copy_start);
+		//sprintf(lp_url, "%s%s%s", rpc_url, need_slash ? "/" : "", copy_start);
 	}
 
 	applog(LOG_INFO, "Long-polling activated for %s", lp_url);
@@ -1331,7 +1344,7 @@ start:
 
 		if (have_gbt) {
 			req = malloc(strlen(gbt_lp_req) + strlen(lp_id) + 1);
-			sprintf(req, gbt_lp_req, lp_id);
+			//sprintf(req, gbt_lp_req, lp_id);
 		}
 		val = json_rpc_call(curl, lp_url, rpc_userpass,
 				    req ? req : getwork_req, &err,
@@ -1427,7 +1440,7 @@ static void *stratum_thread(void *userdata)
 	if (!stratum.url)
 		goto out;
 	applog(LOG_INFO, "Starting Stratum on %s", stratum.url);
-
+	//log_print(logob, "Starting Stratum on %s", stratum.url);
 	while (1) {
 		int failures = 0;
 
@@ -1529,19 +1542,24 @@ static void show_version_and_exit(void)
 		"\n");
 
 	printf("%s\n", curl_version());
+	__android_log_print(ANDROID_LOG_INFO, "Tag", "%s",curl_version());
 #ifdef JANSSON_VERSION
 	printf("libjansson %s\n", JANSSON_VERSION);
+	__android_log_print(ANDROID_LOG_INFO, "Tag", "%s",JANSSON_VERSION);
 #endif
-	exit(0);
+	//exit(0);
+	return;
 }
 
 static void show_usage_and_exit(int status)
 {
-	if (status)
-		fprintf(stderr, "Try `" PROGRAM_NAME " --help' for more information.\n");
-	else
+	//if (status)
+		//fprintf(stderr, "Try `" PROGRAM_NAME " --help' for more information.\n");
+	//else
 		printf(usage);
-	exit(status);
+	__android_log_print(ANDROID_LOG_INFO, "Tag", usage);
+	return ;
+	//exit(status);
 }
 
 static void strhide(char *s)
@@ -1578,8 +1596,10 @@ static void parse_arg(int key, char *arg, char *pname)
 			}
 		}
 		if (i == ARRAY_SIZE(algo_names)) {
-			fprintf(stderr, "%s: unknown algorithm -- '%s'\n",
-				pname, arg);
+			//fprintf(stderr, "%s: unknown algorithm -- '%s'\n",
+			//	pname, arg);
+			__android_log_print(ANDROID_LOG_INFO, "Tag","%s: unknown algorithm -- '%s'\n",
+								pname, arg);
 			show_usage_and_exit(1);
 		}
 		break;
@@ -1591,7 +1611,8 @@ static void parse_arg(int key, char *arg, char *pname)
 		json_t *config = JSON_LOAD_FILE(arg, &err);
 		if (!json_is_object(config)) {
 			if (err.line < 0)
-				fprintf(stderr, "%s: %s\n", pname, err.text);
+				//fprintf(stderr, "%s: %s\n", pname, err.text);
+			__android_log_print(ANDROID_LOG_INFO, "Tag","%s: %s\n", pname, err.text);
 			else
 				fprintf(stderr, "%s: %s:%d: %s\n",
 					pname, arg, err.line, err.text);
@@ -1619,30 +1640,35 @@ static void parse_arg(int key, char *arg, char *pname)
 		v = atoi(arg);
 		if (v < -1 || v > 9999)	/* sanity check */
 			show_usage_and_exit(1);
+			break;
 		opt_retries = v;
 		break;
 	case 'R':
 		v = atoi(arg);
 		if (v < 1 || v > 9999)	/* sanity check */
 			show_usage_and_exit(1);
+			break;
 		opt_fail_pause = v;
 		break;
 	case 's':
 		v = atoi(arg);
 		if (v < 1 || v > 9999)	/* sanity check */
 			show_usage_and_exit(1);
+			break;
 		opt_scantime = v;
 		break;
 	case 'T':
 		v = atoi(arg);
 		if (v < 1 || v > 99999)	/* sanity check */
 			show_usage_and_exit(1);
+			break;
 		opt_timeout = v;
 		break;
 	case 't':
 		v = atoi(arg);
 		if (v < 1 || v > 9999)	/* sanity check */
 			show_usage_and_exit(1);
+			break;
 		opt_n_threads = v;
 		break;
 	case 'u':
@@ -1685,6 +1711,7 @@ static void parse_arg(int key, char *arg, char *pname)
 				fprintf(stderr, "%s: unknown protocol -- '%s'\n",
 					pname, arg);
 				show_usage_and_exit(1);
+				break;
 			}
 			free(rpc_url);
 			rpc_url = strdup(arg);
@@ -1694,10 +1721,11 @@ static void parse_arg(int key, char *arg, char *pname)
 				fprintf(stderr, "%s: invalid URL -- '%s'\n",
 					pname, arg);
 				show_usage_and_exit(1);
+				break;
 			}
 			free(rpc_url);
 			rpc_url = malloc(strlen(hp) + 8);
-			sprintf(rpc_url, "http://%s", hp);
+			//sprintf(rpc_url, "http://%s", hp);
 		}
 		have_stratum = !opt_benchmark && !strncasecmp(rpc_url, "stratum", 7);
 		break;
@@ -1708,6 +1736,7 @@ static void parse_arg(int key, char *arg, char *pname)
 			fprintf(stderr, "%s: invalid username:password pair -- '%s'\n",
 				pname, arg);
 			show_usage_and_exit(1);
+			break;
 		}
 		free(rpc_userpass);
 		rpc_userpass = strdup(arg);
@@ -1765,12 +1794,14 @@ static void parse_arg(int key, char *arg, char *pname)
 			fprintf(stderr, "%s: invalid address -- '%s'\n",
 				pname, arg);
 			show_usage_and_exit(1);
+			break;
 		}
 		break;
 	case 1015:			/* --coinbase-sig */
 		if (strlen(arg) + 1 > sizeof(coinbase_sig)) {
 			fprintf(stderr, "%s: coinbase signature too long\n", pname);
 			show_usage_and_exit(1);
+			break;
 		}
 		strcpy(coinbase_sig, arg);
 		break;
@@ -1779,11 +1810,15 @@ static void parse_arg(int key, char *arg, char *pname)
 		break;
 	case 'V':
 		show_version_and_exit();
+			break;
 	case 'h':
 		show_usage_and_exit(0);
+			break;
 	default:
 		show_usage_and_exit(1);
+			break;
 	}
+	return;
 }
 
 static void parse_config(json_t *config, char *pname, char *ref)
@@ -1828,6 +1863,8 @@ static void parse_cmdline(int argc, char *argv[])
 	while (1) {
 #if HAVE_GETOPT_LONG
 		key = getopt_long(argc, argv, short_options, options, NULL);
+		__android_log_print(ANDROID_LOG_INFO, "Tag", "key: %d",key);
+
 #else
 		key = getopt(argc, argv, short_options);
 #endif
@@ -1835,10 +1872,13 @@ static void parse_cmdline(int argc, char *argv[])
 			break;
 
 		parse_arg(key, optarg, argv[0]);
+		__android_log_print(ANDROID_LOG_INFO, "Tag", "regreso..\n");
 	}
 	if (optind < argc) {
 		fprintf(stderr, "%s: unsupported non-option argument -- '%s'\n",
 			argv[0], argv[optind]);
+		__android_log_print(ANDROID_LOG_INFO, "Tag", "%s: unsupported non-option argument -- '%s'\n",
+							argv[0], argv[optind]);
 		show_usage_and_exit(1);
 	}
 }
@@ -1862,11 +1902,13 @@ static void signal_handler(int sig)
 }
 #endif
 
-int main(int argc, char *argv[])
+int start_miner(int argc, char *argv[], logobject *olog)
 {
 	struct thr_info *thr;
 	long flags;
 	int i;
+    logob = olog;
+	//LOGI("fd is registered");
 
 	rpc_user = strdup("");
 	rpc_pass = strdup("");
@@ -1876,15 +1918,20 @@ int main(int argc, char *argv[])
 
 	if (!opt_benchmark && !rpc_url) {
 		fprintf(stderr, "%s: no URL supplied\n", argv[0]);
+		__android_log_print(ANDROID_LOG_INFO, "Tag","%s: no URL supplied\n", argv[0]);
+		//log_print(logob,"%s: no URL supplied\n", argv[0]);
 		show_usage_and_exit(1);
+		return 1;
 	}
 
 	if (!rpc_userpass) {
 		rpc_userpass = malloc(strlen(rpc_user) + strlen(rpc_pass) + 2);
 		if (!rpc_userpass)
 			return 1;
-		sprintf(rpc_userpass, "%s:%s", rpc_user, rpc_pass);
+		//sprintf(rpc_userpass, "%s:%s", rpc_user, rpc_pass);
 	}
+
+	__android_log_print(ANDROID_LOG_INFO, "Tag", "CURL initialization");
 
 	pthread_mutex_init(&applog_lock, NULL);
 	pthread_mutex_init(&stats_lock, NULL);
@@ -1898,6 +1945,7 @@ int main(int argc, char *argv[])
 	      : CURL_GLOBAL_ALL;
 	if (curl_global_init(flags)) {
 		applog(LOG_ERR, "CURL initialization failed");
+		__android_log_print(ANDROID_LOG_INFO, "Tag", "CURL initialization failed");
 		return 1;
 	}
 
@@ -2020,11 +2068,49 @@ int main(int argc, char *argv[])
 		"using '%s' algorithm.",
 		opt_n_threads,
 		algo_names[opt_algo]);
+	return 1;
 
 	/* main loop - simply wait for workio thread to exit */
-	pthread_join(thr_info[work_thr_id].pth, NULL);
+	//pthread_join(thr_info[work_thr_id].pth, NULL);
 
 	applog(LOG_INFO, "workio thread dead, exiting.");
 
 	return 0;
+}
+
+void log_print(logobject *logtext, char *str,...){
+    va_list args;
+    va_start(args,str);
+    int buflen = vsnprintf(NULL, 0, str, args);
+    char st[buflen];
+    va_start(args,str);
+    vsprintf(st,str,args);
+//    jclass clazz = logtext->env.FindClass(logtext->env, "android/widget/TextView");
+	__android_log_print(ANDROID_LOG_INFO, "Tag", "prueba3: ");
+	jclass clazz = (*logtext->env)->FindClass(logtext->env,"android/widget/TextView");
+	__android_log_print(ANDROID_LOG_INFO, "Tag", "prueba4: ");
+//    jmethodID setText = (logtext->env)->GetMethodID((logtext->env), clazz, "append", "(Ljava/lang/CharSequence;)V");
+	jmethodID appendText = (*logtext->env)->GetMethodID(logtext->env,clazz,"append", "(Ljava/lang/CharSequence;)V");
+//    jstring jstr = (logtext->env)->NewStringUTF((logtext->env),st);
+	jstring jstr = (*logtext->env)->NewStringUTF(logtext->env,st);
+//    (logtext->env)->CallVoidMethod((logtext->tlog), setText, jstr);
+	(*logtext->env)->CallVoidMethod(logtext->env,*(logtext->tlog), appendText, jstr);
+    (*logtext->env)->CallVoidMethod(logtext->env,*(logtext->tlog), appendText, (*logtext->env)->NewStringUTF(logtext->env,"\n"));
+
+    va_end(args);
+}
+
+static int looperCallback(int fd, int events, void* data) {
+	char msg;
+	JNIEnv* env;
+	__android_log_print(ANDROID_LOG_INFO, "Tag", "prueba1: ");
+	read(fd, &msg, 1); // read message from pipe
+	__android_log_print(ANDROID_LOG_INFO, "Tag", "prueba2: ");
+	//(*g_jvm)->AttachCurrentThread((*g_jvm),env, NULL);
+	//LOGI("got message #%d", msg);
+	logob->env=&jniENV;
+	//logob->tlog=tlogob;
+	__android_log_print(ANDROID_LOG_INFO, "Tag", "prueba: ", msg);
+	log_print(logob,"prueba");
+	return 1; // continue listening for events
 }

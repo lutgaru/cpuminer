@@ -12,7 +12,8 @@
 
 #define _GNU_SOURCE
 #include "cpuminer-config.h"
-
+#include "cpu-miner.h"
+#include <jni.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -23,8 +24,10 @@
 #include <limits.h>
 #include <errno.h>
 #include <unistd.h>
-#include <jansson.h>
-#include <curl/curl.h>
+//#include <jansson.h>
+#include "compat/jansson/jansson.h"
+//#include <include/curl/curl.h>
+#include "curl/include/curl/curl.h"
 #include <time.h>
 #if defined(WIN32)
 #include <winsock2.h>
@@ -72,6 +75,7 @@ void applog(int prio, const char *fmt, ...)
 
 	va_start(ap, fmt);
 
+   __android_log_vprint(ANDROID_LOG_INFO, "Tag", fmt,ap);
 #ifdef HAVE_SYSLOG_H
 	if (use_syslog) {
 		va_list ap2;
@@ -84,6 +88,8 @@ void applog(int prio, const char *fmt, ...)
 		buf = alloca(len);
 		if (vsnprintf(buf, len, fmt, ap) >= 0)
 			syslog(prio, "%s", buf);
+		//__android_log_print(ANDROID_LOG_INFO, "Tag", "%s", buf);
+
 	}
 #else
 	if (0) {}
@@ -113,6 +119,7 @@ void applog(int prio, const char *fmt, ...)
 			fmt);
 		pthread_mutex_lock(&applog_lock);
 		vfprintf(stderr, f, ap);	/* atomic write to stderr */
+        //__android_log_write(ANDROID_LOG_INFO, "Tag", f);
 		fflush(stderr);
 		pthread_mutex_unlock(&applog_lock);
 	}
